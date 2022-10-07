@@ -24,13 +24,19 @@ Clone this repository first. Then review the code, compile from source and use i
 
 **Compiling**
 
-	cl.exe /c .\UACBypassCMSTPLUA.c /Fo.\UACBypassCMSTPLUA.o
+	make
 
 **Usage**
 
 Load the `UACBypassCMSTPLUA.cna` script using the Cobalt Strike Script Manager. Then use the command below to execute the exploit.
 
     $ uac_bypass_cmstplua
+
+## Limitations
+
+* The BOF spawns a new process (in which UAC is bypassed).
+* The BOF does not read the output of the spawned process.
+* The UAC bypass is not allowed on the beacon itself.
 
 ## Issues
 

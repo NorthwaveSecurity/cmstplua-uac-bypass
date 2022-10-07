@@ -13,12 +13,8 @@ DECLSPEC_IMPORT BOOL WINAPI KERNEL32$DeviceIoControl(HANDLE, DWORD, LPVOID, DWOR
 DECLSPEC_IMPORT DWORD WINAPI KERNEL32$GetCurrentProcessId();
 DECLSPEC_IMPORT UINT WINAPI KERNEL32$GetWindowsDirectoryW(LPWSTR, UINT);
 DECLSPEC_IMPORT DWORD WINAPI KERNEL32$GetModuleFileNameW(HMODULE, LPWSTR, DWORD);
-DECLSPEC_IMPORT DWORD WINAPI KERNEL32$FormatMessage(DWORD, LPCVOID, DWORD, DWORD, LPTSTR, DWORD, va_list*);
-
-DECLSPEC_IMPORT VOID WINAPI NTOSKRNL$RtlEnterCriticalSection(LPCRITICAL_SECTION);
-DECLSPEC_IMPORT VOID WINAPI NTOSKRNL$RtlLeaveCriticalSection(LPCRITICAL_SECTION);
-DECLSPEC_IMPORT NTSYSAPI WINAPI NTOSKRNL$RtlInitUnicodeString(PUNICODE_STRING, PCWSTR);
-DECLSPEC_IMPORT PVOID WINAPI NTOSKRNL$RtlSecureZeroMemory(PVOID, SIZE_T);
+DECLSPEC_IMPORT DWORD WINAPI KERNEL32$FormatMessageA(DWORD, LPCVOID, DWORD, DWORD, LPTSTR, DWORD, va_list*);
+DECLSPEC_IMPORT HMODULE WINAPI KERNEL32$GetModuleHandleW(LPCWSTR);
 
 DECLSPEC_IMPORT BOOL WINAPI ADVAPI32$StartServiceW(SC_HANDLE, DWORD, LPCWSTR*);
 DECLSPEC_IMPORT SC_HANDLE WINAPI ADVAPI32$CreateServiceW(SC_HANDLE, LPCWSTR, LPCWSTR, DWORD, DWORD, DWORD, DWORD, LPCWSTR, LPCWSTR, LPDWORD, LPCWSTR, LPCWSTR, LPCWSTR);
@@ -44,3 +40,10 @@ WINBASEAPI  char*       __cdecl     MSVCRT$strstr (char* _String, const char* _S
 WINBASEAPI  void*       __cdecl     MSVCRT$memset (void* _Dst, int _Val, size_t Size);
 WINBASEAPI  errno_t     __cdecl     MSVCRT$wcscat_s (wchar_t*, size_t, const wchar_t*);
 WINBASEAPI  errno_t     __cdecl     MSVCRT$wcscpy_s (wchar_t*, rsize_t, const wchar_t*);
+WINBASEAPI  void*       __cdecl     MSVCRT$malloc (size_t);
+WINBASEAPI  void*       __cdecl     MSVCRT$calloc (size_t, size_t);
+WINBASEAPI  int         __cdecl     MSVCRT$_wcsicmp (const wchar_t*, const wchar_t*);
+WINBASEAPI  size_t      __cdecl     MSVCRT$wcslen (const wchar_t*);
+WINBASEAPI  void*       __cdecl     MSVCRT$memcpy (void*, const void*, size_t);
+WINBASEAPI  size_t      __cdecl     MSVCRT$strlen (const char*);
+WINBASEAPI  size_t      __cdecl     MSVCRT$mbstowcs (wchar_t*, const char*, size_t);
