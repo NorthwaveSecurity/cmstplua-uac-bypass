@@ -1,5 +1,5 @@
 <p align="center">
-    <img src="https://raw.githubusercontent.com/tijme/uac-bypass-cmstplua/master/.github/logo.png" width="450"/>
+    <img src="https://raw.githubusercontent.com/tijme/uac-bypass-cmstplua/master/.github/logo.png" width="650"/>
 </p>
 <p align="center">
     <a href="https://github.com/tijme/uac-bypass-cmstplua/blob/master/LICENSE.md"><img src="https://raw.finnwea.com/shield/?firstText=Source&secondText=Licensed" /></a>
